@@ -102,6 +102,36 @@ if(sessionStorage.getItem('sh_auth')==='1')document.getElementById('authOverlay'
     <div class="cc"><h3>主要チャネル 応募構成比</h3><div class="cw"><canvas id="c1d"></canvas></div></div>
   </div>
 
+  <div style="margin-top:8px"><div class="stit">📊 デイリーインサイト＆運用提案</div></div>
+  <div class="tc" style="background:linear-gradient(135deg,#fff 0%,#fefaf0 100%);border-left:4px solid var(--accent)">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:24px">
+      <div>
+        <h3 style="font-size:14px;font-weight:700;color:var(--primary);margin-bottom:12px;display:flex;align-items:center;gap:6px">
+          <span style="background:var(--accent);color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:11px">1</span>
+          運用分析（現在の状況）
+        </h3>
+        <div id="insAnalysis" style="font-size:13px;line-height:1.7;color:var(--text)"></div>
+      </div>
+      <div>
+        <h3 style="font-size:14px;font-weight:700;color:var(--primary);margin-bottom:12px;display:flex;align-items:center;gap:6px">
+          <span style="background:var(--accent);color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:11px">2</span>
+          今後の運用方針
+        </h3>
+        <div id="insStrategy" style="font-size:13px;line-height:1.7;color:var(--text)"></div>
+      </div>
+      <div>
+        <h3 style="font-size:14px;font-weight:700;color:var(--primary);margin-bottom:12px;display:flex;align-items:center;gap:6px">
+          <span style="background:var(--accent);color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:11px">3</span>
+          予算アロケーション提案
+        </h3>
+        <div id="insBudget" style="font-size:13px;line-height:1.7;color:var(--text)"></div>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px dashed #e0d4b0;font-size:11px;color:var(--sub)">
+      ※ このインサイトは累計データに基づき自動生成されています。期間フィルター変更時は再計算されます。
+    </div>
+  </div>
+
   <div style="margin-top:8px"><div class="stit">3-2. 全チャネル詳細</div></div>
   <div class="cg">
     <div class="cc"><h3>全チャネル 応募数推移</h3><div class="cw"><canvas id="c2a"></canvas></div></div>
@@ -398,7 +428,84 @@ function renderSingle(){
 }
 initChSel();
 
-function renderAll(){const d=gF();rKPI(d);rTbl(d);rCharts(d);renderSingle()}
+function rInsights(data){
+  const ta=data.reduce((s,d)=>s+d.t,0);
+  const tc=data.reduce((s,d)=>s+d.cost,0);
+  const tm=data.reduce((s,d)=>s+d.mt,0);
+  const agg=aggCh(data),costs=aggCost(data);
+  const days=data.length;
+  const remainDays=Math.max(0,19-days+1);
+  const cpa=ta>0?Math.round(tc/ta):0;
+  const pAll=ta/TTGT,pS=ta/STGT;
+  const dailyAvg=days>0?Math.round(ta/days):0;
+  const requiredDaily=remainDays>0?Math.round((STGT-ta)/remainDays):0;
+
+  // Channel analysis
+  const chPerf=Object.keys(CB).map(ch=>{
+    const apps=agg[ch]||0,cost=costs[ch]||0,b=CB[ch];
+    const cpaCh=apps>0&&cost>0?Math.round(cost/apps):null;
+    const tar=b.ta>0?apps/b.ta:0;
+    const efficiency=cpaCh&&b.tcpa?b.tcpa/cpaCh:1;
+    return{ch,apps,cost,cpa:cpaCh,tar,tcpa:b.tcpa,budget:b.b,efficiency,bp:b.b>0?cost/b.b:0};
+  }).filter(c=>c.apps>0||c.cost>0);
+
+  const topPerf=chPerf.filter(c=>c.tar>=1.0).sort((a,b)=>b.tar-a.tar);
+  const underPerf=chPerf.filter(c=>c.budget>0&&c.tar<0.3&&c.cpa).sort((a,b)=>a.tar-b.tar);
+  const expensive=chPerf.filter(c=>c.cpa&&c.tcpa&&c.cpa>c.tcpa*1.5).sort((a,b)=>(b.cpa/b.tcpa)-(a.cpa/a.tcpa));
+
+  // 1. Analysis
+  let analysis=`<ul style="margin-left:18px;padding:0">`;
+  analysis+=`<li><strong>応募進捗：</strong>累計${fm(ta)}件（春全体目標 ${pc(pAll)} / 先行目標 <span class="badge ${pS>=0.95?'bg':pS>=0.7?'bb':'br'}">${pc(pS)}</span>）。日次平均 ${fm(dailyAvg)}件/日</li>`;
+  analysis+=`<li><strong>広告効率：</strong>応募CPA ${fyf(cpa)}（計画 ¥1,784に対し ${cpa<=1784?'<span class="badge bg">'+pc((1784-cpa)/1784)+'改善</span>':'<span class="badge br">'+pc((cpa-1784)/1784)+'超過</span>'}）。広告費 ${fy(tc)} / 予算消化率 ${pc(tc/TBU)}</li>`;
+  if(topPerf.length>0)analysis+=`<li><strong>好調チャネル：</strong>${topPerf.slice(0,3).map(c=>`${c.ch}（${pc(c.tar)}）`).join(', ')} が目標達成。特に <strong>${topPerf[0].ch}</strong> は計画の${pc(topPerf[0].tar)}と圧倒的な好調</li>`;
+  if(underPerf.length>0)analysis+=`<li><strong>不調チャネル：</strong>${underPerf.slice(0,3).map(c=>`${c.ch}（達成率${pc(c.tar)}）`).join(', ')} が低迷。要テコ入れ</li>`;
+  if(expensive.length>0)analysis+=`<li><strong>CPA超過：</strong>${expensive.slice(0,3).map(c=>`${c.ch}（${fyf(c.cpa)}/目標${fyf(c.tcpa)}）`).join(', ')} が計画CPAを大幅超過</li>`;
+  analysis+=`</ul>`;
+  document.getElementById('insAnalysis').innerHTML=analysis;
+
+  // 2. Strategy
+  let strategy=`<ul style="margin-left:18px;padding:0">`;
+  if(pS>=0.95){
+    strategy+=`<li>✅ <strong>先行目標は順調達成見込み。</strong>春全体目標 ${fm(TTGT)} 達成に向けてペース維持・拡大が必要</li>`;
+    strategy+=`<li>残り ${remainDays}日間は <strong>1日あたり ${fm(Math.max(0,Math.round((TTGT-ta)/Math.max(1,50-days))))}件</strong> ペースで運用継続を推奨</li>`;
+  }else{
+    strategy+=`<li>⚠️ 先行目標未達ペース。残り${remainDays}日で<strong>1日あたり ${fm(requiredDaily)}件</strong>必要（現在の日次${fm(dailyAvg)}件の${(requiredDaily/Math.max(1,dailyAvg)).toFixed(1)}倍）</li>`;
+  }
+  if(topPerf.length>0)strategy+=`<li>🚀 <strong>${topPerf[0].ch}</strong>への配信強化：CPA ${fyf(topPerf[0].cpa||0)}と効率良好。日次配信量を拡大し獲得加速</li>`;
+  if(underPerf.length>0)strategy+=`<li>🔧 <strong>${underPerf[0].ch}</strong>のクリエイティブ見直し or 配信停止を検討。コスト垂れ流し回避</li>`;
+  if(expensive.length>0)strategy+=`<li>💰 <strong>${expensive[0].ch}</strong>のターゲティング/入札最適化必須。CPA${Math.round(expensive[0].cpa/expensive[0].tcpa*100)}%超過は許容範囲外</li>`;
+  strategy+=`<li>📧 メール応募 ${fm(tm)}件（目標5,500の${pc(tm/5500)}）。NL配信スケジュールの見直し推奨</li>`;
+  strategy+=`</ul>`;
+  document.getElementById('insStrategy').innerHTML=strategy;
+
+  // 3. Budget allocation
+  let budget=`<ul style="margin-left:18px;padding:0">`;
+  // Find chronic underperformers with significant budget
+  const reallocateFrom=chPerf.filter(c=>c.budget>=2000000&&c.tar<0.3).sort((a,b)=>(b.budget-b.cost)-(a.budget-a.cost));
+  const reallocateTo=topPerf.filter(c=>c.budget>0).slice(0,2);
+  if(reallocateFrom.length>0&&reallocateTo.length>0){
+    const totalRem=reallocateFrom.reduce((s,c)=>s+(c.budget-c.cost),0);
+    budget+=`<li>💸 <strong>削減候補：</strong>`;
+    budget+=reallocateFrom.slice(0,2).map(c=>`${c.ch}（残予算${fy(c.budget-c.cost)}）`).join(', ');
+    budget+=`</li>`;
+    budget+=`<li>📈 <strong>増額候補：</strong>${reallocateTo.map(c=>c.ch).join(', ')}（現在好調・追加投下で更なる獲得期待）</li>`;
+    budget+=`<li>🔄 <strong>再配分額目安：</strong>約 ${fy(Math.round(totalRem*0.6))}（不調枠の60%）を好調チャネルへ移行を提案</li>`;
+  }
+  // Adways analysis specifically
+  const adwApps=AG['Adways'].reduce((s,ch)=>s+(agg[ch]||0),0);
+  const adwCost=AG['Adways'].reduce((s,ch)=>s+(costs[ch]||0),0);
+  const adwBudget=AG['Adways'].reduce((s,ch)=>s+(CB[ch]?.b||0),0);
+  if(adwBudget>0&&adwApps/Math.max(1,AG['Adways'].reduce((s,ch)=>s+(CB[ch]?.ta||0),0))<0.05){
+    budget+=`<li>⚠️ <strong>Adways代理店全体の見直し急務：</strong>予算${fy(adwBudget)}に対し応募${fm(adwApps)}件（消化${pc(adwCost/adwBudget)}）。配信遅延 or 設計問題の可能性</li>`;
+  }
+  // Remaining budget
+  const remainBudget=TBU-tc;
+  budget+=`<li>💴 <strong>残予算 ${fy(remainBudget)}</strong>（${pc(remainBudget/TBU)}）。残り${remainDays}日で日次 ${fy(remainDays>0?remainBudget/remainDays:0)}/日を消化可能</li>`;
+  budget+=`</ul>`;
+  document.getElementById('insBudget').innerHTML=budget;
+}
+
+function renderAll(){const d=gF();rKPI(d);rTbl(d);rCharts(d);renderSingle();rInsights(d)}
 document.getElementById('sd').addEventListener('change',()=>{document.querySelectorAll('.df button').forEach(b=>b.classList.remove('active'));document.getElementById('bC').classList.add('active');renderAll()});
 document.getElementById('ed').addEventListener('change',()=>{document.querySelectorAll('.df button').forEach(b=>b.classList.remove('active'));document.getElementById('bC').classList.add('active');renderAll()});
 renderAll();
